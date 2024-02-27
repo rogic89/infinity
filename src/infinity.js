@@ -282,9 +282,9 @@ module.exports = function ({
     class PermanentPool {
 
         /*
-            Linear decay is the only force in the network that can lower link permanence.
+            Constant decay is the only force in the network that can lower link permanence.
             In the network with 1e6 nodes, MaximumLinkPermanence will be 1e12.
-            If we have 100 timesteps per second and a linear decay of -1 per timestep, it would take +300 real life years for permanence of 1e12 to decay to 0.
+            If we have 100 timesteps per second and a constant decay of -1 per timestep, it would take +300 real life years for permanence of 1e12 to decay to 0.
             Therefore, when every single link in the pool reaches MaximumLinkPermanence value then that pool can be considered permanent.
             We replace Pool class with new PermanentPool class.
             PermanentPool class is functionaly identical to Pool class but is optimized for high performance.
@@ -388,7 +388,7 @@ module.exports = function ({
         console.log('     MINIMUM LINKS IN POOL -> ' + MinimumLinksInPool);
         console.log('     MAXIMUM LINKS IN POOL -> ' + MaximumLinksInPool);
         console.log('          INPUT MULTIPLIER -> ' + InputMultiplier);
-        console.log('              LINEAR DECAY -> ' + -1);
+        console.log('            CONSTANT DECAY -> ' + -1);
         console.log('        EXPONENTIAL GROWTH -> ' + ExponentialGrowth);
         console.log('           TEMPORAL LENGTH -> ' + TemporalLength);
         console.log('                   KWINNER -> ' + kwinner);

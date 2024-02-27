@@ -162,7 +162,7 @@ async function run() {
 
     function beforeTimestep(input, label, afterTimestep) {
         const output = network.timestep([ input ], label);
-        // Utility.visualize(size, row, label, input, true);
+        // Utility.visualize(784, 28, label, input, true);
         // Utility.visualize(size, row, label, output);
         afterTimestep(output, label);
     }
