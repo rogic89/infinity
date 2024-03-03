@@ -90,7 +90,8 @@ async function run() {
             id: 'A2',               // Id has to be unique among layers
             inhibition: {
                 row: 28,
-                square: 2
+                square: 2,
+                // depth: 2
             },
             // layers: [{           // Feedforward nested layer
             //     id: '3',         // It receives input as temporal output from its parent layer

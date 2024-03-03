@@ -435,7 +435,7 @@ module.exports = function ({
             TouchedNodesByLayerId.set(layer.id, new Set());
             ThinkingNodesByLayerId.set(layer.id, new Set());
             UnpredictedNodesByLayerId.set(layer.id, new Map());
-            const inhibition = Utility.inhibition(size, layer.inhibition.row, layer.inhibition.square);
+            const inhibition = Utility.inhibition(size, layer.inhibition.row, layer.inhibition.square, layer.inhibition.depth);
             AreasByLayerId.set(layer.id, inhibition.areas);
             AreasByLayerIdByNodeId.set(layer.id, inhibition.areasByNodeId);
             kwinner += inhibition.areas.size;

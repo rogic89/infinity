@@ -31,34 +31,58 @@ module.exports = class {
         });
     }
     // Create topological inhibition square areas
-    static inhibition(size, row, square) {
+    static inhibition(size, row, square, depth = 2) {
         if (!Number.isInteger(size))   throw new Error('"size" must be an integer.');
         if (!Number.isInteger(row))    throw new Error('"row" must be an integer.');
         if (!Number.isInteger(square)) throw new Error('"square" must be an integer.');
+        if (!Number.isInteger(depth))  throw new Error('"depth" must be an integer.');
 
-        const areas = new Set();
-        const areasByNodeId = new Map();
+        const hareas = new Set();
+        const vareas = new Set();
+        const hareasByNodeId = new Map();
+        const vareasByNodeId = new Map();
         const ycount = size / row / square;
         const xcount = row / square;
 
+        // console.log(ycount, xcount);
+
         for (let y = 0; y < ycount; y++) {
             for (let x = 0; x < xcount; x++) {
-                const area = new Map();
-                areas.add(area);
+                const harea = new Map();
+                // console.log('H', y, x);
                 for (let j = 0; j < square; j++) {
                     for (let i = 0; i < square; i++) {
-                        const nodeId = (y * square + j) * row + (x * square + i) + 1;
-                        if (nodeId > size) continue;
-                        areasByNodeId.set(nodeId, area);
-                        if (nodeId % row === 0) break;
+                        const id = (y * square + j) * row + (x * square + i) + 1;
+                        // console.log(id);
+                        if (id > size) continue;
+                        const varea = new Map();
+                        vareas.add(varea);
+                        hareas.add(harea);
+                        // console.log('V');
+                        for (let d = 0; d < depth; d++) {
+                            const nodeId = id + size * d;
+                            // console.count(nodeId);
+                            hareasByNodeId.set(nodeId, harea);
+                            vareasByNodeId.set(nodeId, varea);
+                        }
+                        if (id % row === 0) break;
                     }
                 }
             }
         }
 
+        // for (let l = 1; l <= (size * depth); l++) {
+        //     console.count(!!vareasByNodeId.get(l));
+        // }
+
+        // hareasByNodeId.forEach(area => {
+        //     console.log(area);
+        //     !area.size && console.count("areaNoSize");
+        // })
+
         return {
-            areas,
-            areasByNodeId
+            hareas,
+            hareasByNodeId
         }
     }
     // Find most active output nodes for each label
