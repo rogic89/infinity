@@ -1,6 +1,7 @@
 const Utility = require('./utility');
 
 module.exports = function ({
+    GLOG,
     // REQUIRED
     regions,
     // OPTIONAL
@@ -77,6 +78,27 @@ module.exports = function ({
     let outputSparsity = 0;
     let totalThinkingNodeSizePerTimestep = 0;
     let highestLinkPermanence = 0;
+
+    // GLOG
+    GLOG.network = {
+        layers: [],
+        totalNodes: Size,
+        initialPoolWeight: InitialPoolWeight,
+        minimumPoolWeight: MinimumPoolWeight,
+        maximumPoolWeight: MaximumPoolWeight,
+        poolWeightChangeRate: PoolWeightChangeRate,
+        initialLinkPermanence: InitialLinkPermanence,
+        maximumLinkPermanence: MaximumLinkPermanence,
+        minimumLinksInPool: MinimumLinksInPool,
+        maximumLinksInPool: MaximumLinksInPool,
+        inputMultiplier: InputMultiplier,
+        constantDecay: -1,
+        exponentialGrowth: ExponentialGrowth,
+        temporalLength: TemporalLength,
+        kwinner: kwinner,
+        totalPossibleLinks: TotalPossibleLinks,
+        totalPossiblePools: TotalPossiblePools
+    };
 
     class Layer {
 
@@ -170,6 +192,20 @@ module.exports = function ({
             console.log('         Thinking ->', this.ThinkingNodes.size || this.ThinkingNodes.size.toString(), this.ThinkingNodes.size ? '- ' + [...this.ThinkingNodes.keys()].sort() : '');
             // Thinking -> Nodes that became active in this timestep without direct input, instead their energy came only from the pools
             console.log('  Output/Timestep ->', Utility.toFixedFloat(this.Output.size / this.Nodes.size * 100) + '%');
+            return {
+                output: {
+                    size: this.Output.size,
+                    ids: [...this.Output.keys()].sort()
+                },
+                unpredicted: {
+                    size: this.UnpredictedNodes.size,
+                    ids: [...this.UnpredictedNodes.keys()].sort()
+                },
+                thinking: {
+                    size: this.ThinkingNodes.size,
+                    ids: [...this.ThinkingNodes.keys()].sort()
+                }
+            };
         }
     }
 
@@ -223,7 +259,7 @@ module.exports = function ({
         activate(node) {
             const link = this.input.get(node);
             if (link.decay()) return this.decay(node);  // Decay the link, if it was removed then decay the pool
-            // ++activatedLinksPerTimestep;
+            ++activatedLinksPerTimestep;
             this.predicting.add(link);                  // Keep adding links for reward even if pool was activated
             if (this.activated) return;                 // Prevent activation of the pool if it is was already active in this timestep
             TouchedPools.add(this);                     // Pool now has at least one active link so it is added into TouchedPools
@@ -231,7 +267,7 @@ module.exports = function ({
             this.activated = true;
             this.output.touch(this);
             TouchedPools.delete(this);                  // Pool has been activated so it is removed from TouchedPools
-            // ++activatedPoolsPerTimestep;
+            ++activatedPoolsPerTimestep;
         }
 
         reward() {
@@ -240,14 +276,14 @@ module.exports = function ({
             if (this.permanent.size === this.input.size) this.replace();                // Replace only after all the links in pool have reached MaximumLinkPermanence
             this.predicting.clear();
             this.activated = false;
-            // ++LTPPoolsPerTimestep;
+            ++LTPPoolsPerTimestep;
         }
 
         punish() {
             if (this.weight > MinimumPoolWeight) this.weight -= PoolWeightChangeRate;   // Decrease pool weight
             this.predicting.clear();
             this.activated = false;
-            // ++LTDPoolsPerTimestep;
+            ++LTDPoolsPerTimestep;
         }
 
         decay(node) {
@@ -299,7 +335,7 @@ module.exports = function ({
         }
 
         activate() {
-            // ++activatedLinksPerTimestep;
+            ++activatedLinksPerTimestep;
             if (this.activated) return;             // Prevent activation of the pool if it is was already active in this timestep
             ++this.predicting;
             TouchedPools.add(this);                 // Pool now has at least one active link so it is added into TouchedPools
@@ -307,21 +343,21 @@ module.exports = function ({
             this.activated = true;
             this.output.touch(this);
             TouchedPools.delete(this);              // Pool has been activated so it is removed from TouchedPools
-            // ++activatedPoolsPerTimestep;
+            ++activatedPoolsPerTimestep;
         }
 
         reward() {
             if (this.weight < MaximumPoolWeight) this.weight += PoolWeightChangeRate;   // Increase pool weight
             this.activated = false;
             this.predicting = 0;
-            // ++LTPPoolsPerTimestep;
+            ++LTPPoolsPerTimestep;
         }
 
         punish() {
             if (this.weight > MinimumPoolWeight) this.weight -= PoolWeightChangeRate;   // Decrease pool weight
             this.activated = false;
             this.predicting = 0;
-            // ++LTDPoolsPerTimestep;
+            ++LTDPoolsPerTimestep;
         }
 
         clear() {
@@ -372,6 +408,17 @@ module.exports = function ({
             NodesByLayerId.get(layerId).set(nodeId, new Node(nodeId, Layers.get(layerId)))
         });
     });
+
+    // GLOG
+    Layers.forEach(layer => {
+        GLOG.network.layers.push({
+            id: layer.id,
+            nodes: layer.Nodes.size,
+            areas: layer.Areas.size
+        });
+    });
+
+    // console.log(JSON.stringify(GLOG));
 
     // Log network stats
     function stats() {
@@ -468,6 +515,15 @@ module.exports = function ({
     function timestep(inputs, label) {
         ++Timestep;
 
+        const GLOG_ITERATION = {
+            timestep: Timestep,
+            label: label,
+            layers: [],
+            network: {},
+            links: {},
+            pools: {}
+        }
+
         // Run the layers as a recursive feedforward input
         regions.forEach((region, index) => runLayers(region.layers, region.temporal, inputs[index]));
 
@@ -524,7 +580,7 @@ module.exports = function ({
         outputSparsity += Utility.toFixedFloat(GlobalOutputArray.length / Size);
         thinkingSparsity += Utility.toFixedFloat(totalThinkingNodeSizePerTimestep / GlobalOutputArray.length);
         unpredictedSparsity += Utility.toFixedFloat(TotalUpredictedNodeSizePerTimestep / GlobalOutputArray.length);
-        if (Utility.log(Timestep) || totalThinkingNodeSizePerTimestep) {
+        // if (Utility.log(Timestep) || totalThinkingNodeSizePerTimestep) {
             console.log('/////////////////////////////////////// TIMESTEP ' + Timestep);
             console.log('/////////////////////////////////////// LABEL ' + label);
             console.log('================ NETWORK ==============');
@@ -545,13 +601,22 @@ module.exports = function ({
             // Usually, this happens if the number of output nodes, determined by inhibition areas, is too small compared to the number of MinimumLinksInPool
             // Either reduce the inhibition square area to increase the number of output nodes and/or decrease MinimumLinksInPool and/or increase MaximumLinksInPool
             // Except from the very first timestep, the value should remain 1
-            Layers.forEach(layer => layer.log());
+            GLOG_ITERATION.network = {
+                totalAveragePercentage: {
+                    output: Utility.toFixedFloat(outputSparsity / Timestep * 100),
+                    unpredicted: Utility.toFixedFloat(unpredictedSparsity / Timestep * 100),
+                    thinking: Utility.toFixedFloat(thinkingSparsity / Timestep * 100),
+                    notCreatedPools: Utility.toFixedFloat(notCreatedPools / Timestep * 100)
+                },
+                unpredictedNonCreatedPools
+            };
+            Layers.forEach(layer => GLOG_ITERATION.layers.push(layer.log()));
             console.log('================ LINKS ================');
             console.log('             Live ->', Utility.abbr(liveLinks));
             console.log('          Deleted ->', Utility.abbr(deletedLinks) + ' - ' + Utility.toFixedFloat(deletedLinks / createdLinks * 100) + '%');
             console.log(' Created/Timestep ->', createdLinksPerTimestep || createdLinksPerTimestep.toString());
             console.log(' Deleted/Timestep ->', deletedLinksPerTimestep || deletedLinksPerTimestep.toString());
-            // console.log('  Active/Timestep ->', Utility.abbr(activatedLinksPerTimestep) + ' - ' + Utility.toFixedFloat(activatedLinksPerTimestep / liveLinks * 100) + '%');
+            console.log('  Active/Timestep ->', Utility.abbr(activatedLinksPerTimestep) + ' - ' + Utility.toFixedFloat(activatedLinksPerTimestep / liveLinks * 100) + '%');
             console.log('       Links/Pool ->', Utility.toFixedFloat(liveLinks / livePools).toString());
             console.log('       Links/Node ->', Utility.toFixedFloat(liveLinks / Size).toString());
             console.log('         Sparsity ->', Utility.toFixedFloat(liveLinks / TotalPossibleLinks * 100) + '%');
@@ -560,14 +625,29 @@ module.exports = function ({
             // HighestPermanence -> Highest permanence that any of the links currently have
             // Useful when changing the difficulty for increasing link permanence
             // Difficuly is too high if non of the links could reach the MaximumLinkPermanence
+            GLOG_ITERATION.links = {
+                total: {
+                    live: liveLinks,
+                    deleted: deletedLinks
+                },
+                timestep: {
+                    created: createdLinksPerTimestep,
+                    deleted: deletedLinksPerTimestep,
+                    active: activatedLinksPerTimestep
+                },
+                linksPerPool: Utility.toFixedFloat(liveLinks / livePools),
+                linksPerNode: Utility.toFixedFloat(liveLinks / Size),
+                sparsity: Utility.toFixedFloat(liveLinks / TotalPossibleLinks * 100),
+                highestPermanence: highestLinkPermanence >= MaximumLinkPermanence ? 'Maximum' : Math.floor(highestLinkPermanence)
+            };
             console.log('================ POOLS ================');
             console.log('             Live ->', Utility.abbr(livePools));
             console.log('          Deleted ->', Utility.abbr(deletedPools) + ' - ' + Utility.toFixedFloat(deletedPools / createdPools * 100) + '%');
             console.log(' Created/Timestep ->', createdPoolsPerTimestep || createdPoolsPerTimestep.toString());
             console.log(' Deleted/Timestep ->', deletedPoolsPerTimestep || deletedPoolsPerTimestep.toString());
-            // console.log('  Active/Timestep ->', Utility.abbr(activatedPoolsPerTimestep) + ' - ' + Utility.toFixedFloat(activatedPoolsPerTimestep / livePools * 100) + '%');
-            // console.log('     LTP/Timestep ->', Utility.abbr(LTPPoolsPerTimestep));
-            // console.log('     LTD/Timestep ->', Utility.abbr(LTDPoolsPerTimestep));
+            console.log('  Active/Timestep ->', Utility.abbr(activatedPoolsPerTimestep) + ' - ' + Utility.toFixedFloat(activatedPoolsPerTimestep / livePools * 100) + '%');
+            console.log('     LTP/Timestep ->', Utility.abbr(LTPPoolsPerTimestep));
+            console.log('     LTD/Timestep ->', Utility.abbr(LTDPoolsPerTimestep));
             console.log('       Pools/Node ->', Utility.toFixedFloat(livePools / Size).toString());
             console.log('         Sparsity ->', Utility.toFixedFloat(livePools / TotalPossiblePools * 100) + '%');
             // Sparsity -> Percentage of all the possible pools that could ever be created
@@ -576,17 +656,36 @@ module.exports = function ({
             // Only when all of the links in the pool reach MaximumLinkPermanence then the Pool class gets replaced by PermanentPool class
             // This implementation detail is for performance reasons only
             // Number of permanent pools should grow continuously
-        }
+            GLOG_ITERATION.pools = {
+                total: {
+                    live: livePools,
+                    deleted: deletedPools,
+                    permanent: permanentPools
+                },
+                timestep: {
+                    created: createdPoolsPerTimestep,
+                    deleted: deletedPoolsPerTimestep,
+                    active: activatedPoolsPerTimestep,
+                    ltp: LTPPoolsPerTimestep,
+                    ltd: LTDPoolsPerTimestep
+                },
+                poolsPerNode: Utility.toFixedFloat(livePools / Size),
+                sparsity: Utility.toFixedFloat(livePools / TotalPossiblePools * 100)
+            };
+        // }
+
         LTPPoolsPerTimestep = 0;
         LTDPoolsPerTimestep = 0;
         createdPoolsPerTimestep = 0;
         deletedPoolsPerTimestep = 0;
         activatedPoolsPerTimestep = 0;
         createdLinksPerTimestep = 0;
-        activatedLinksPerTimestep = 0;
         deletedLinksPerTimestep = 0;
         totalThinkingNodeSizePerTimestep = 0;
+        activatedLinksPerTimestep = 0;
         TotalUpredictedNodeSizePerTimestep = 0;
+        // console.log(JSON.stringify(GLOG_ITERATION));
+        GLOG.iterations.push(GLOG_ITERATION);
 
         return GlobalOutputArray;
     }
@@ -594,6 +693,7 @@ module.exports = function ({
     return {
         stats,
         timestep,
-        kwinner
+        kwinner,
+        GLOG
     }
 }

@@ -30,6 +30,49 @@ module.exports = class {
             stream.on('end', resolve);
         });
     }
+    // Read file, extract specific number of inputs per label and write to new .csv 
+    static async sliceCSV() {
+        const datasource = '../datasets/mnist';
+        // const datasource = '../datasets/emnist-mnist';
+        // const datasource = '../datasets/emnist-fashion';
+        // const datasource = '../datasets/emnist-letters';
+        // const datasource = '../datasets/emnist-balanced';
+
+        const dataset = datasource + '-train-SORTED.csv';
+        const mapping = datasource + '-mapping.txt';
+        const countPerLabel = 11;
+
+        const fs = require('fs');
+        const labels = fs.readFileSync(mapping, { encoding:'utf8' }).split('\n').slice(0, -1).reduce((acc, row) => {
+            const [ index, char ] = row.split(' ');
+            acc[parseInt(index)] = [];
+            return acc;
+        }, {});
+
+        await new Promise((resolve, reject) => {
+            const stream = fs.createReadStream(dataset);
+
+            stream.on('data', chunk => {
+                // console.log(chunk.toString().split('\n').slice(1, -1).length);
+                chunk.toString().split('\n').slice(1, -1).forEach(row => {
+                    const data = row.split(',');
+                    const array = labels[parseInt(data[0])];
+                    if (!array || array.length === countPerLabel) return;
+                    console.log(parseInt(data[0]), array.length);
+                    array.push(row);
+                });
+            });
+
+            stream.on('error', reject);
+            stream.on('end', resolve);
+        });
+
+        fs.writeFile(
+            dataset.replace('.csv', `-${countPerLabel}.csv`),
+            Object.keys(labels).reduce((acc, label) => acc.concat(labels[label]), []).join('\r\n'),
+            err => console.log(err || 'DONE')
+        );
+    }
     // Create topological inhibition square areas
     static inhibition(size, row, square) {
         if (!Number.isInteger(size))   throw new Error('"size" must be an integer.');
@@ -104,7 +147,7 @@ module.exports = class {
         return score;
     }
     // Calculate overall score
-    static overall(scores) {
+    static overall(GLOG, scores) {
         const final = new Map();
 
         scores.forEach(data => {
@@ -127,6 +170,7 @@ module.exports = class {
             const value = this.toFixedFloat(t / overall) * 100 || 0;
             total += value;
             console.log(label, this.toFixedFloat(value));
+            GLOG.score.labels[label] = this.toFixedFloat(value);
         });
 
         console.log('*************** WARNING ***************');
@@ -136,6 +180,7 @@ module.exports = class {
         console.log('Learning is completely unsupervised and we are only trying to understand the inner workings of the network.');
         console.log('***************************************');
         console.log('SCORE:', this.toFixedFloat(total / final.size));
+        GLOG.score.overall = this.toFixedFloat(total / final.size);
     }
     // Sort nodes by weight from highest to lowest
     static sort(map) {

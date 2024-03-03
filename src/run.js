@@ -1,10 +1,24 @@
 const Infinity = require('./infinity');
 const Utility = require('./utility');
 
+const GLOG = {
+    network: {},
+    iterations: [],
+    time: {},
+    score: {
+        labels: {},
+        overall: 0
+    }
+}
+
 async function training(datasource, beforeTimestep) {
     const results = new Map();
+    const labelCounter = new Map();
 
     function afterTimestep(output, label) {
+        // const counter = (labelCounter.get(label) || 0) + 1;
+        // labelCounter.set(label, counter);
+        // if (counter < 3) return;
         const data = results.get(label) || new Map();
         const nodes = data.get('nodes') || new Map();
         output.forEach(node => nodes.set(node, nodes.get(node) + 1 || 1));
@@ -13,6 +27,7 @@ async function training(datasource, beforeTimestep) {
         results.set(label, data);
     }
 
+    const startTime = process.hrtime();
     console.time('TIME-TRAINING');
     for (var i = 0; i < 1; i++) {
         await Utility.extractInputAndBegin(
@@ -23,6 +38,9 @@ async function training(datasource, beforeTimestep) {
         );
     }
     console.timeEnd('TIME-TRAINING');
+    const endTime = process.hrtime(startTime);
+
+    GLOG.time.training = (endTime[0] * 1000 + endTime[1] / 1e6).toFixed(2);
 
     return results;
 }
@@ -37,6 +55,7 @@ async function testing(datasource, beforeTimestep, results) {
         });
     }
 
+    const startTime = process.hrtime();
     console.time('TIME-TESTING');
     await Utility.extractInputAndBegin(
         datasource + '-test-SORTED.csv',
@@ -45,6 +64,9 @@ async function testing(datasource, beforeTimestep, results) {
         afterTimestep
     );
     console.timeEnd('TIME-TESTING');
+    const endTime = process.hrtime(startTime);
+
+    GLOG.time.testing = (endTime[0] * 1000 + endTime[1] / 1e6).toFixed(2);
 
     return scores;
 }
@@ -96,24 +118,24 @@ async function run() {
             //     id: '3',         // It receives input as temporal output from its parent layer
             //     inhibition: {
             //         row: 28,
-            //         square: 3
+            //         square: 4
             //     },
-            //     layers: [{
-            //         id: '4',
-            //         inhibition: {
-            //             row: 28,
-            //             square: 4
-            //         },
-            //         layers: [{
-            //             id: '7',
-            //             inhibition: {
-            //                 row: 28,
-            //                 square: 7
-            //             },
-            //         }]
-            //     }]
+                // layers: [{
+                //     id: '4',
+                //     inhibition: {
+                //         row: 28,
+                //         square: 4
+                //     },
+                //     layers: [{
+                //         id: '7',
+                //         inhibition: {
+                //             row: 28,
+                //             square: 7
+                //         },
+                //     }]
+                // }]
             // }]
-        }
+        },
         // , {                         
         //     id: 'B7',            // Temporal state is shared among each layer on horizontal level
         //     inhibition: {
@@ -127,13 +149,15 @@ async function run() {
         //             square: 4
         //         },
         //     }]
-        // }, {
+        // }, 
+        // {
         //     id: 'C4',
         //     inhibition: {
         //         row: 28,
-        //         square: 4
+        //         square: 3
         //     }
-        // }, {
+        // }, 
+        // {
         //     id: 'D7',
         //     inhibition: {
         //         row: 28,
@@ -144,15 +168,16 @@ async function run() {
     }];
 
     const network = Infinity({
+        GLOG,
         // REQUIRED
-        regions
+        regions,
         // OPTIONAL
-        // temporalLength
+        // temporalLength: 10,
         // initialLinkPermanence
         // maximumLinkPermanence
-        // minimumLinksInPool
+        // minimumLinksInPool: 5
         // maximumLinksInPool
-        // poolWeightChangeRate
+        // poolWeightChangeRate: 
         // initialPoolWeight
         // minimumPoolWeight
         // maximumPoolWeight
@@ -173,14 +198,26 @@ async function run() {
     // const datasource = '../datasets/emnist-letters';
     // const datasource = '../datasets/emnist-balanced';
 
+    const startTime = process.hrtime();
     console.time('TIME-TOTAL');
     network.stats();
     const results = await training(datasource, beforeTimestep);
     Utility.classify(results, network.kwinner);
     const scores = await testing(datasource, beforeTimestep, results);
     network.stats();
-    Utility.overall(scores);
+    Utility.overall(GLOG, scores);
     console.timeEnd('TIME-TOTAL');
+    const endTime = process.hrtime(startTime);
+    GLOG.time.total = (endTime[0] * 1000 + endTime[1] / 1e6).toFixed(2);
+    // console.log(JSON.stringify(network.GLOG.score));
+
+    require('fs').writeFile('../logs/handwrittenDigits60000.json', JSON.stringify(GLOG, null, 2), (err) => {
+      if (err) {
+        console.error('Error writing to file:', err);
+        return;
+      }
+      console.log('DONE');
+    });
 }
 
 run();
