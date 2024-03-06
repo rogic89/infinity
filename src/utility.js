@@ -31,7 +31,7 @@ module.exports = class {
         });
     }
     // Create topological inhibition square areas
-    static inhibition(size, row, square, depth = 2) {
+    static inhibition(size, row, square, depth) {
         if (!Number.isInteger(size))   throw new Error('"size" must be an integer.');
         if (!Number.isInteger(row))    throw new Error('"row" must be an integer.');
         if (!Number.isInteger(square)) throw new Error('"square" must be an integer.');
@@ -49,7 +49,7 @@ module.exports = class {
         for (let y = 0; y < ycount; y++) {
             for (let x = 0; x < xcount; x++) {
                 const harea = new Map();
-                // console.log('H', y, x);
+                // console.log('H', x, y);
                 for (let j = 0; j < square; j++) {
                     for (let i = 0; i < square; i++) {
                         const id = (y * square + j) * row + (x * square + i) + 1;
@@ -61,7 +61,7 @@ module.exports = class {
                         // console.log('V');
                         for (let d = 0; d < depth; d++) {
                             const nodeId = id + size * d;
-                            // console.count(nodeId);
+                            // console.log(nodeId);
                             hareasByNodeId.set(nodeId, harea);
                             vareasByNodeId.set(nodeId, varea);
                         }
@@ -82,7 +82,9 @@ module.exports = class {
 
         return {
             hareas,
-            hareasByNodeId
+            vareas,
+            hareasByNodeId,
+            vareasByNodeId
         }
     }
     // Find most active output nodes for each label
@@ -219,5 +221,14 @@ module.exports = class {
     // Calculate print log for each timestep
     static log(timestep) {
         return timestep < 1e4 || !(timestep % 1e4);
+    }
+    static depthRange(id, depth) {
+        return {
+            min: id * depth - depth + 1,
+            max: id * depth
+        };
+    }
+    static random({ min, max }) {
+      return Math.floor(Math.random() * (max - min + 1) + min);
     }
 }

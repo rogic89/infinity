@@ -86,12 +86,12 @@ async function run() {
     */
     const regions = [{
         size: 784,                  // Size is the same for all layers in this region
+        depth: 2,
         layers: [{                  // First feedforward layer
             id: 'A2',               // Id has to be unique among layers
             inhibition: {
                 row: 28,
-                square: 2,
-                // depth: 2
+                square: 2
             },
             // layers: [{           // Feedforward nested layer
             //     id: '3',         // It receives input as temporal output from its parent layer

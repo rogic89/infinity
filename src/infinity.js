@@ -22,8 +22,10 @@ module.exports = function ({
     // Layers
     const Layers = new Map();                               // All the layers in the entire network
     const NodesByLayerId = new Map();
-    const AreasByLayerId = new Map();
-    const AreasByLayerIdByNodeId = new Map();               // Areas mapped by nodeId for each layer
+    const HAreasByLayerId = new Map();
+    const HAreasByLayerIdByNodeId = new Map();               // Areas mapped by nodeId for each layer
+    const VAreasByLayerId = new Map();
+    const VAreasByLayerIdByNodeId = new Map();               // Areas mapped by nodeId for each layer
     const UnpredictedNodesByLayerId = new Map();
     const ThinkingNodesByLayerId = new Map();
     const TouchedNodesByLayerId = new Map();                // Nodes that have energy > 0 in this timestep
@@ -32,7 +34,7 @@ module.exports = function ({
     regions.forEach(region => {
         if (!Number.isInteger(region.size)) throw new Error('Region "size" must be an integer.');
         region.temporal = new createTemporalState();
-        populateLayers(region.layers, region.size);
+        populateLayers(region.layers, region.size, region.depth);
     });
 
     // Network
@@ -80,47 +82,115 @@ module.exports = function ({
 
     class Layer {
 
-        constructor(id) {
+        constructor(id, depth) {
+            // console.log(depth);
             this.id = id;
+            this.depth = depth;
             this.Nodes = NodesByLayerId.get(this.id);
-            this.Areas = AreasByLayerId.get(this.id);
-            this.AreasByNodeId = AreasByLayerIdByNodeId.get(this.id);
+            this.HAreas = HAreasByLayerId.get(this.id);
+            this.HAreasByNodeId = HAreasByLayerIdByNodeId.get(this.id);
+            this.VAreas = VAreasByLayerId.get(this.id);
+            this.VAreasByNodeId = VAreasByLayerIdByNodeId.get(this.id);
             this.UnpredictedNodes = UnpredictedNodesByLayerId.get(this.id);
             this.ThinkingNodes = ThinkingNodesByLayerId.get(this.id);
             this.TouchedNodes = TouchedNodesByLayerId.get(this.id);
+            this.TouchedVAreas = new Set();
             this.Output = new Map();
             this.Threshold = 0;
         }
 
         run(input) {
-
-            // Add input energy onto the nodes
-            input.forEach((energy, nodeId) => {
-                const node = this.Nodes.get(nodeId);
-                node.energy += energy;
+            // console.log(this.VAreasByNodeId);
+            // Add driver input energy onto the nodes
+            input.forEach((energy, id) => {
                 this.Threshold += energy;
-                this.TouchedNodes.add(node);
+                const varea = this.VAreasByNodeId.get(id);
+                // console.log(id, energy);
+                varea.set('id', id);
+                varea.set('energy', energy);
+                this.TouchedVAreas.add(varea);
+                // this.TouchedHAreas.add()
             });
-
+            const singleSize = this.Nodes.size / this.depth;
+            // console.log('            Input ->', input.size + ' - ' + [...input.keys()].sort());
             // Calculate dynamic energy threshold for each layer
-            this.Threshold /= this.TouchedNodes.size;
-
+            this.Threshold /= this.TouchedVAreas.size;
+            // console.log("Threshold => ", this.Threshold);
+            // Maybe we can look only and the input.size instead of the touched varea count
+            // console.log(this.Threshold);
             // Check all nodes that have energy and calculate each area output nodes
-            this.TouchedNodes.forEach(node => {
-                if (this.Threshold > node.energy) return;
-                const area = this.AreasByNodeId.get(node.id);
-                const highest = area.get(0);
+            this.TouchedVAreas.forEach(varea => {
 
-                if (node.input.size) {
-                    if (highest) {
-                        if (node.energy > highest.energy) area.set(0, node);
+                // if (harea.size) {
+                    // Maybe we could know if the harea has a predicted node if we only add vareas in it when the pool triggers
+                    // Then we would know that whatever vareas are in the harea, they have at least one predicted node per varea
+                    // As we go thru vareas, we set the highest on  harea and compare if with new vareas as the come
+
+                    // WE DONT EVER NEED TO CALCULATE RANDOM ID IN VAREA IF ITS HAREA ALREADY HAS PREDICTED NODE ABOVE NETWORK THRESHOLD
+                // }
+
+                // We can skip calculation of randomId vareas if the harea already has predicted winner node with higher energy???
+                // Maybe we can calculate highest predicted per harea
+                // And we continue to sum the threshold energy
+
+                // In any case, varea should have only one highest node
+                const id = varea.get('id');
+                const energy = varea.get('energy') || 0;
+                varea.delete('id');
+                varea.delete('energy');
+                // !energy && console.log(id, energy);
+                let vNode = { energy: -Infinity, punish: () => {} };
+
+                // console.log(varea.size, energy);
+
+                if (varea.size) {
+                    varea.forEach(node => {
+                        if (vNode.energy > node.energy) {
+                            // node.punish();
+                        } else {
+                            // vNode.punish();
+                            vNode = node;
+                        }
+                    });
+                    // varea.clear();
+                    // this.TouchedVAreas.delete(varea);
+                    // console.log(vNode.energy);
+                    // this.Threshold < vNode.energy && console.log(vNode.id, energy);
+                    vNode.energy += energy;
+                    if (this.Threshold > vNode.energy) return;
+                    // varea.delete(vNode);
+                    // varea.set(vNode.id, vNode);  // COMPARE with Varea
+                    // console.count('PREDICTION');
+                } else if (id && energy) {
+                    if (this.Threshold > energy) return;
+                    // console.log(varea);
+                    // console.log(id, this.depth);
+                    // const randomId = id // Utility.random(Utility.depthRange(id, this.depth));
+                    const randomId = [ id, id + singleSize, id + singleSize + singleSize ][Math.floor(Math.random() * this.depth)];
+                    // console.log(id, randomId);
+                    // console.log(id, energy);
+                    vNode = this.Nodes.get(randomId);
+                    vNode.energy += energy;
+                    varea.set(randomId, vNode);
+                }
+
+                id && varea.set('hasInput', true);
+
+                // Somehow save varea input energy so we can compare it with threshold and then, if needed, find random node
+
+                const harea = this.HAreasByNodeId.get(vNode.id);
+                const hNode = harea.get(0);
+
+                if (vNode.input.size) {
+                    if (hNode) {
+                        if (vNode.energy > hNode.energy) harea.set(0, vNode);
                     } else {
-                        area.clear();
-                        area.set(0, node);
+                        harea.clear();
+                        harea.set(0, vNode);
                     }
                 } else {
-                    if (highest) return;
-                    area.set(node.id, node);
+                    if (hNode) return;
+                    harea.set(vNode.id, vNode);
                 }
             });
 
@@ -129,15 +199,18 @@ module.exports = function ({
             this.ThinkingNodes.clear();
 
             // Set upredicted nodes and reward correctly predicting pools
-            this.Areas.forEach(area => {
-                area.forEach(node => {
+            this.HAreas.forEach(harea => {
+                // harea.size > 1 && console.count('HAREA SIZE GREATER THAN 1');
+                harea.forEach(node => {
                     if (node.input.size) {
-                        if (!input.has(node.id)) this.ThinkingNodes.add(node.id);
+                        // console.log(node.id);
+                        // !input.has(node.id) && this.ThinkingNodes.add(node.id);
+                        !node.varea.has('hasInput') && this.ThinkingNodes.add(node.id);
                     } else {
                         this.UnpredictedNodes.set(node.id, node);
                     }
                     node.reward();
-                    this.TouchedNodes.delete(node);
+                    node.varea.delete(node);
                 });
             });
 
@@ -145,21 +218,31 @@ module.exports = function ({
             totalThinkingNodeSizePerTimestep += this.ThinkingNodes.size;
 
             // Punish and clear all remaining incorrectly predicting pools
-            this.TouchedNodes.forEach(node => node.punish());
-            this.TouchedNodes.clear();
+            // this.TouchedNodes.forEach(node => node.punish());
+            // this.TouchedNodes.clear();
+
+            this.TouchedVAreas.forEach(varea => {
+                varea.delete('hasInput');
+                varea.forEach(node => node.punish());
+                varea.clear();
+            });
+            this.TouchedVAreas.clear();
+
         }
 
         activate() {
             this.Output.clear();
             // Create output and activate output nodes
-            this.Areas.forEach(area => {
-                area.forEach(node => {
+            this.HAreas.forEach(harea => {
+                // console.log(harea.size);
+                harea.forEach(node => {
                     GlobalOutputArray.push(node);
                     this.Output.set(node.id, 1);
                     node.activate(this);
                 });
-                area.clear();
+                harea.clear();
             });
+            // this.Nodes.forEach(node => console.log(node.energy));
         }
 
         log() {
@@ -331,8 +414,10 @@ module.exports = function ({
 
     class Node {
 
-        constructor(id, layer) {
+        constructor(id, varea, layer) {
+            // console.log(varea);
             this.id = id;
+            this.varea = varea;                     // VArea instance that this node belongs to
             this.layer = layer;                     // Layer instance that this node belongs to
             this.input = new Set();                 // Pools that were predicting in previous timestep
             this.output = new Map();                // Map(Node, Pool) - Pools that this node has to other nodes
@@ -344,10 +429,13 @@ module.exports = function ({
         }
 
         touch(pool) {
-            this.input.add(pool);                   // Add pool into the input of this node
-            this.energy += pool.weight;             // Increase the energy of this node
-            this.layer.Threshold += pool.weight;    // Add into the overall sum of the layer energy
-            this.layer.TouchedNodes.add(this);      // Node now has energy so it is added into its layer TouchedNodes
+            this.input.add(pool);                       // Add pool into the input of this node
+            this.energy += pool.weight;                 // Increase the energy of this node
+            this.layer.Threshold += pool.weight;        // Add into the overall sum of the layer energy
+            // console.log(this.varea);
+            this.varea.set(this.id, this);                       // Node now has energy so it is added into its layer TouchedNodes
+            this.layer.TouchedVAreas.add(this.varea);   // Node now has energy so it is added into its layer TouchedNodes
+            // this.layer.TouchedNodes.add(this);          // Node now has energy so it is added into its layer TouchedNodes
         }
 
         reward() {
@@ -364,12 +452,12 @@ module.exports = function ({
     }
 
     // Create layers
-    regions.forEach(region => createLayers(region.layers));
+    regions.forEach(region => createLayers(region.layers, region.depth));
 
     // Create nodes for each layer
-    AreasByLayerIdByNodeId.forEach((areasByNodeId, layerId) => {
-        areasByNodeId.forEach((area, nodeId) => {
-            NodesByLayerId.get(layerId).set(nodeId, new Node(nodeId, Layers.get(layerId)))
+    VAreasByLayerIdByNodeId.forEach((vAreasByNodeId, layerId) => {
+        vAreasByNodeId.forEach((varea, nodeId) => {
+            NodesByLayerId.get(layerId).set(nodeId, new Node(nodeId, varea, Layers.get(layerId)))
         });
     });
 
@@ -377,7 +465,7 @@ module.exports = function ({
     function stats() {
         console.log('/////////////////////////////////////// NETWORK');
         console.log('/////////////////////////////////////// STATS');
-        Layers.forEach(layer => console.log('                     LAYER -> ' + 'ID:' + layer.id + '  NODES:' + layer.Nodes.size + '  AREAS:' + layer.Areas.size));
+        Layers.forEach(layer => console.log('                     LAYER -> ' + 'ID:' + layer.id + '  DEPTH:' + layer.depth + '  NODES:' + layer.Nodes.size + '  HAREAS:' + layer.HAreas.size));
         console.log('     TOTAL NUMBER OF NODES -> ' + Size);
         console.log('       INITIAL POOL WEIGHT -> ' + InitialPoolWeight);
         console.log('       MINIMUM POOL WEIGHT -> ' + MinimumPoolWeight);
@@ -426,32 +514,34 @@ module.exports = function ({
     }
 
     // Populate layer structure with initial params
-    function populateLayers(layers, size) {
+    function populateLayers(layers, size, depth) {
         layers.forEach(layer => {
             if (!layer.id)                    throw new Error('Layer "id" is not defined.');
             if (NodesByLayerId.has(layer.id)) throw new Error('Layer id "' + layer.id + '" is not unique.');
-            Size += size;
+            Size += size * depth;
             NodesByLayerId.set(layer.id, new Map());
             TouchedNodesByLayerId.set(layer.id, new Set());
             ThinkingNodesByLayerId.set(layer.id, new Set());
             UnpredictedNodesByLayerId.set(layer.id, new Map());
-            const inhibition = Utility.inhibition(size, layer.inhibition.row, layer.inhibition.square, layer.inhibition.depth);
-            AreasByLayerId.set(layer.id, inhibition.areas);
-            AreasByLayerIdByNodeId.set(layer.id, inhibition.areasByNodeId);
-            kwinner += inhibition.areas.size;
+            const inhibition = Utility.inhibition(size, layer.inhibition.row, layer.inhibition.square, depth);
+            HAreasByLayerId.set(layer.id, inhibition.hareas);
+            HAreasByLayerIdByNodeId.set(layer.id, inhibition.hareasByNodeId);
+            VAreasByLayerId.set(layer.id, inhibition.vareas);
+            VAreasByLayerIdByNodeId.set(layer.id, inhibition.vareasByNodeId);
+            kwinner += inhibition.hareas.size;
             if (layer.layers) {
                 layer.temporal = new createTemporalState();
-                populateLayers(layer.layers, size);
+                populateLayers(layer.layers, size, depth);
             }
         });
     }
 
     // Create layer instances
-    function createLayers(layers) {
+    function createLayers(layers, depth) {
         layers.forEach(layer => {
-            layer.instance = new Layer(layer.id);
+            layer.instance = new Layer(layer.id, depth);
             Layers.set(layer.id, layer.instance);
-            layer.layers && createLayers(layer.layers);
+            layer.layers && createLayers(layer.layers, depth);
         });
     }
 
