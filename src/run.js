@@ -86,7 +86,7 @@ async function run() {
     */
     const regions = [{
         size: 784,                  // Size is the same for all layers in this region
-        depth: 2,
+        depth: 1,
         layers: [{                  // First feedforward layer
             id: 'A2',               // Id has to be unique among layers
             inhibition: {
